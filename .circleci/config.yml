@@ -1,0 +1,119 @@
+# Getting started with CircleCI
+# https://circleci.com/docs/2.0/first-steps/
+#
+# .circleci/config.yml
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/node:9.11.1-stretch
+
+    steps:
+      - run:
+          name: Install dependencies
+          command: |
+             sudo apt-get update && sudo apt-get install -y curl 
+             mkdir -p /tmp/test-results/
+             
+      - run:
+          name: Install Docker Compose
+          command: |
+            curl -L https://github.com/docker/compose/releases/download/1.21.0/docker-compose-`uname -s`-`uname -m` > ~/docker-compose
+            chmod +x ~/docker-compose
+            sudo mv ~/docker-compose /usr/local/bin/docker-compose
+
+      - setup_remote_docker
+
+      - checkout
+
+      - run:
+          name: Start App Container
+          #http://172.17.0.1:8000
+          command: |
+             set -x
+             docker-compose version
+             docker-compose up -d
+
+      - run:
+          #http://172.17.0.2:8001
+          name: ZAP Baseline Scan of application (without CRS)
+          command: |
+             (
+             docker pull owasp/zap2docker-weekly && \
+             docker run -t owasp/zap2docker-weekly zap-baseline.py \
+                -t http://172.17.0.1:8000/ -l WARN || \
+                # Only fail on error code 1, which indicates at least one FAIL was found.
+                # error codes 2 & 3 indicate WARN or other, and should not break the run
+                if [ $? -ne 1 ]; then exit 0; else exit 1; fi;
+             )
+
+#      # https://hub.docker.com/r/ictu/zap2docker-weekly/
+#      # This Active Scan has to be developed: a custom config_file and context file
+#      # This Active Scan takes about 3,5 minutes to run
+#      - run:
+#          name: ZAP Active Scan of application (without CRS)
+#          command: |
+#             (
+#             docker pull ictu/zap2docker-weekly && \
+#             docker run -t ictu/zap2docker-weekly zap-baseline-custom.py \
+#                -t http://172.17.0.1:8000/ -l WARN -m 5 \
+#                --active_scan \
+#                --auth_loginurl http://172.17.0.1:8000/login \
+#                --auth_usernamefield user --auth_passwordfield pass \
+#                --auth_auto --auth_username pixiadmin --auth_password adminpixi || \
+#                if [ $? -ne 1 ]; then exit 0; else exit 1; fi;
+#              )
+#
+       # Debugging possibilities:
+#      - run:
+#          name: curl test
+#          command: |
+#             (
+#             docker pull hiromasaono/curl && \
+#             docker run -dt --name curl hiromasaono/curl && \
+#             docker exec -ti curl curl http://172.17.0.1:8000/register
+#             docker exec -ti curl curl http://172.17.0.2:8001/register
+#             docker exec -ti apachecrs cat /etc/httpd/logs/error.log
+#             docker exec -ti apachecrs curl 172.17.0.1:8000
+#             )
+#
+      # A zap-api.conf could be developed
+#      - run:
+#          name: ZAP API scan of application (without CRS)
+#          command: |
+#             (
+#             docker pull owasp/zap2docker-weekly && \
+#             docker run -t owasp/zap2docker-weekly zap-api-scan.py \
+#                -u https://raw.githubusercontent.com/franbuehler/pixi-crs/master/zap-api.conf?token=AQ6RVdBQnWmIHjOULcbaM-1untbAtqkkks5aoZmqwA \
+#                -f openapi -l WARN \
+#                -t http://172.17.0.1:8090/swagger.json \
+#                -z "config formhandler.fields.field\(0\).fieldId=user" \
+#                -z "config formhandler.fields.field\(0\).value=test@pixi.owasp" \
+#                -z "config formhandler.fields.field\(0\).enabled=true" \
+#                -z "config formhandler.fields.field\(1\).fieldId=pass" \
+#                -z "config formhandler.fields.field\(1\).value=testpass" \
+#                -z "config formhandler.fields.field\(1\).enabled=true" || \
+#                if [ $? -ne 1 ]; then exit 0; else exit 1; fi;
+#              )
+#
+      # A zap-api.conf could be developed
+#      - run:
+#          name: ZAP API scan of application with CRS
+#          command: |
+#             (
+#             docker pull owasp/zap2docker-weekly && \
+#             docker run -t owasp/zap2docker-weekly zap-api-scan.py \
+#                -u https://raw.githubusercontent.com/franbuehler/pixi-crs/master/zap-api.conf?token=AQ6RVdBQnWmIHjOULcbaM-1untbAtqkkks5aoZmqwA \
+#                -f openapi -l WARN \
+#                -t http://172.17.0.4:8003/swagger.json \
+#                -z "config formhandler.fields.field\(0\).fieldId=user" \
+#                -z "config formhandler.fields.field\(0\).value=test@pixi.owasp" \
+#                -z "config formhandler.fields.field\(0\).enabled=true" \
+#                -z "config formhandler.fields.field\(1\).fieldId=pass" \
+#                -z "config formhandler.fields.field\(1\).value=testpass" \
+#                -z "config formhandler.fields.field\(1\).enabled=true" || \
+#                if [ $? -ne 1 ]; then exit 0; else exit 1; fi;
+#              )
+
+      - store_test_results:
+           path: /tmp/test-results 
